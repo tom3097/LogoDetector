@@ -22,6 +22,7 @@ class H5pyLogos32(object):
 
     def __init__(self):
         self.__root_directory = None
+        self.__train_size = None
         self.__random_state = None
         self.__random_seed = None
         self.__label_encoder = preprocessing.LabelEncoder()
@@ -73,7 +74,6 @@ class H5pyLogos32(object):
         train_test = [p.split() for p in train_test]
 
         class_bucket = {}
-        print train_test
         for class_name, file_name in train_test:
             if class_name not in class_bucket:
                 class_bucket[class_name] = []
@@ -84,7 +84,8 @@ class H5pyLogos32(object):
         train_set = []
         test_set = []
         for bucket in class_bucket.values():
-            train_part, test_part = train_test_split(bucket, train_size=0.8, random_state=self.__random_state)
+            train_part, test_part = train_test_split(bucket, train_size=self.__train_size,
+                                                     random_state=self.__random_state)
             train_set.extend(train_part)
             test_set.extend(test_part)
         random.seed(self.__random_seed)
@@ -167,22 +168,50 @@ class H5pyLogos32(object):
 
         h5py_file.close()
 
-    def __call__(self, root_directory, random_state=4, random_seed=126):
+    def __initialize(self, root_directory, train_size, random_state, random_seed):
         """
-        Launches the creation of h5py database.
+        Initializes state of the object.
 
         :param root_directory: The path to the 'FlickrLogos-v2' directory (downloaded
         from http://www.multimedia-computing.de/flickrlogos/).
+        :param train_size: The ratio of data used for training.
         :param random_state: The random state used as a seed for 'sklearn' module
         methods.
         :param random_seed: The random seed used as a seed for 'random' module methods.
         :return: None
         """
         self.__root_directory = root_directory
+        self.__train_size = train_size
         self.__random_state = random_state
         self.__random_seed = random_seed
+
+    def __deinitialize(self):
+        """
+        Deinitializes state of the object.
+
+        :return: None
+        """
+        self.__root_directory = None
+        self.__train_size = None
+        self.__random_state = None
+        self.__random_seed = None
+
+    def __call__(self, root_directory, train_size=0.8, random_state=4, random_seed=126):
+        """
+        Launches the creation of h5py database.
+
+        :param root_directory: The path to the 'FlickrLogos-v2' directory (downloaded
+        from http://www.multimedia-computing.de/flickrlogos/).
+        :param train_size: The ratio of data used for training.
+        :param random_state: The random state used as a seed for 'sklearn' module
+        methods.
+        :param random_seed: The random seed used as a seed for 'random' module methods.
+        :return: None
+        """
+        self.__initialize(root_directory, train_size, random_state, random_seed)
         train_set, test_set = self.__prepare_train_test()
         self.__create_h5py_base(train_set, test_set)
+        self.__deinitialize()
 
 
 if __name__ == '__main__':
