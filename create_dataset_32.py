@@ -114,7 +114,7 @@ class H5pyLogos32(object):
 
         class_names = [p[0] for p in set]
         encoded_names = self.__label_encoder.transform(class_names)
-        labels[:] = encoded_names
+        labels[:] = [[class_code] for class_code in encoded_names]
 
         for idx, pair in enumerate(set):
             _, file_name = pair
