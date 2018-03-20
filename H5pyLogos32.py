@@ -5,6 +5,8 @@ import random
 import numpy as np
 import h5py
 
+# fixme: Image can contain several bounding boxes. I thought that it contains exactly one.
+
 
 class H5pyLogos32(object):
     """
@@ -215,5 +217,7 @@ class H5pyLogos32(object):
 
 
 if __name__ == '__main__':
+    root_directory = ''
+
     h5pyLogos32 = H5pyLogos32()
-    h5pyLogos32('/home/tomasz/Pictures/Datasets/FlickrLogos-v2')
+    h5pyLogos32(root_directory)
