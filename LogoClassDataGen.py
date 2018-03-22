@@ -2,8 +2,7 @@ import numpy as np
 import h5py
 from PIL import Image
 import io
-
-# fixme: Image can contain several bounding boxes. I thought that it contains exactly one.
+import random
 
 
 class LogoClassDataGen(object):
@@ -11,7 +10,8 @@ class LogoClassDataGen(object):
     LogoClassDataGen is a data generator used for feeding neural network
     with logotype images and background images. Image is considered to be a logo
     if intersection over union is greater than or equal to 0.5. Image is
-    considered to be a background if intersection is equal to 0.0.
+    considered to be a background if intersection is equal to 0.0, or if
+    it comes from the image without logotype.
 
     """
     def __init__(self, h5py_file, logo_per_batch, background_per_batch,
@@ -27,6 +27,7 @@ class LogoClassDataGen(object):
         self.__classes_no = len(self.__base.attrs['classes'].split(', ')) + 1
         self.__background_label = self.__classes_no - 1
         np.random.seed(random_seed)
+        random.seed(random_seed)
 
     @staticmethod
     def __calculate_intersection(bbox_true, bbox_gen):
@@ -109,29 +110,68 @@ class LogoClassDataGen(object):
         return bbox_gen
 
     @staticmethod
-    def __get_back_crop_box(bbox, image_size):
+    def __get_back_crop_box(bboxes, image_size):
         """
         Generates background bounding box, with intersection equals to 0.0.
 
-        :param bbox: The ground truth bounding box.
+        :param bbox: List of ground truth bounding boxes.
         :param image_size: Size of the image.
-        :return: Generated bounding box.
+        :return: Generated bounding box, or 'None' if such a box cannot
+        be generated.
         """
-        bbox_true = np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]])
+        max_iterations = 150
+        iteration = 0
+
         correction = 0
-        while True:
-            back_width = np.random.randint(min(bbox[2], bbox[3]) - correction, max(bbox[2], bbox[3]) - correction)
-            back_height = np.random.randint(min(bbox[2], bbox[3]) - correction, max(bbox[2], bbox[3]) - correction)
+
+        bbox_widths = [bboxes[i][2] for i in range(len(bboxes))]
+        bbox_heights = [bboxes[i][3] for i in range(len(bboxes))]
+
+        bbox_found = False
+        while not bbox_found:
+            if iteration == max_iterations:
+                return None
+
+            bbox_found = True
+
+            back_width = np.random.randint(min(bbox_widths) - 32 - correction, max(bbox_widths) - correction)
+            back_height = np.random.randint(min(bbox_heights) - 32 - correction, max(bbox_heights) - correction)
+            back_width = max(back_width, 32)
+            back_height = max(back_height, 32)
 
             x_rand = np.random.randint(0, image_size[0] - 1 - back_width)
             y_rand = np.random.randint(0, image_size[1] - 1 - back_height)
             bbox_gen = np.array([x_rand, y_rand, x_rand + back_width, y_rand + back_height])
-            intersection = LogoClassDataGen.__calculate_intersection(bbox_true, bbox_gen)
-            if intersection == 0.0:
-                break
-            correction += 1
+            for bbox in bboxes:
+                bbox_true = np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]])
+                intersection = LogoClassDataGen.__calculate_intersection(bbox_true, bbox_gen)
+                if intersection != 0.0:
+                    bbox_found = False
+                    break
+            correction += 2
+            iteration += 1
 
         return bbox_gen
+
+    def __get_background_from_nologo(self, group):
+        """
+        Gets background from random nologo image.
+
+        :param group: 'train' or 'test', refers to train set or test set respectively.
+        :return: Background image.
+        """
+        rand_idx = np.random.randint(0, len(self.__base[group]['nologos']))
+        image = Image.open(io.BytesIO(self.__base[group]['nologos'][rand_idx]))
+
+        back_width = np.random.randint(image.size[0] / 6, image.size[0] / 3)
+        back_height = np.random.randint(image.size[1] / 6, image.size[0] / 3)
+        x_rand = np.random.randint(0, image.size[0] - 1 - back_width)
+        y_rand = np.random.randint(0, image.size[1] - 1 - back_height)
+
+        bbox_gen = np.array([x_rand, y_rand, x_rand + back_width, y_rand + back_height])
+        back_crop = image.crop(bbox_gen).resize((self.__width, self.__height),
+                                                Image.LANCZOS)
+        return back_crop
 
     def __sparsify(self, labels):
         """
@@ -162,9 +202,11 @@ class LogoClassDataGen(object):
         for db_idx in indexes_batch:
             image = Image.open(io.BytesIO(self.__base[group]['images'][db_idx]))
             label = self.__base[group]['labels'][db_idx][0]
-            bbox = self.__base[group]['bboxes'][db_idx]
+            b = self.__base[group]['bboxes'][db_idx]
+            all_bboxes = [(b[i], b[i + 1], b[i + 2], b[i + 3]) for i in range(0, len(b), 4)]
+            logo_bbox = random.choice(all_bboxes)
 
-            logo_bbox_gen = self.__get_logo_crop_box(bbox, image.size)
+            logo_bbox_gen = self.__get_logo_crop_box(logo_bbox, image.size)
             logo_crop = image.crop(logo_bbox_gen).resize((self.__width, self.__height), Image.LANCZOS)
 
             x[idx, :, :, :] = np.asarray(logo_crop)
@@ -173,8 +215,12 @@ class LogoClassDataGen(object):
 
             back_no = np.count_nonzero(background_indexes == db_idx)
             for b_idx in xrange(back_no):
-                back_bbox_gen = self.__get_back_crop_box(bbox, image.size)
-                back_crop = image.crop(back_bbox_gen).resize((self.__width, self.__height),
+                back_bbox_gen = self.__get_back_crop_box(all_bboxes, image.size)
+
+                if back_bbox_gen is None:
+                    back_crop = self.__get_background_from_nologo(group)
+                else:
+                    back_crop = image.crop(back_bbox_gen).resize((self.__width, self.__height),
                                                              Image.LANCZOS)
 
                 x[idx, :, :, :] = np.asarray(back_crop)
@@ -188,7 +234,7 @@ class LogoClassDataGen(object):
         Feeds a neural network with data, never ending loop.
 
         :param group: 'train' or 'test', refers to train set or test set respectively.
-        :return: None
+        :return: None.
         """
         data_no = self.__base[group]['images'].shape[0]
         max_iter = int(data_no / self.__logo_per_batch)
@@ -198,7 +244,7 @@ class LogoClassDataGen(object):
             for i in xrange(max_iter):
                 indexes_batch = indexes[i * self.__logo_per_batch: (i + 1) * self.__logo_per_batch]
                 x, y = self.__data_generation(group, indexes_batch)
-                yield x,y
+                yield x, y
 
 
 if __name__ == '__main__':

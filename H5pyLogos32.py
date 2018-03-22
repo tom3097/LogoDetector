@@ -5,8 +5,6 @@ import random
 import numpy as np
 import h5py
 
-# fixme: Image can contain several bounding boxes. I thought that it contains exactly one.
-
 
 class H5pyLogos32(object):
     """
@@ -69,7 +67,8 @@ class H5pyLogos32(object):
         Prepares sets for training and testing. For each class, split ratio
         (train, test) = (0.8, 0.2).
 
-        :return: Tuple that consists of train set and test set.
+        :return: Tuple that consists of train set with logos, test set with logos,
+        train set without logos, test set without logos.
         """
         with open(self.__data_path, 'r') as f:
             train_test = f.read().splitlines()
@@ -80,8 +79,7 @@ class H5pyLogos32(object):
             if class_name not in class_bucket:
                 class_bucket[class_name] = []
             class_bucket[class_name].append((class_name, file_name))
-        # images without logotypes are redundant
-        class_bucket.pop('no-logo')
+        nologos = class_bucket.pop('no-logo')
 
         train_set = []
         test_set = []
@@ -94,9 +92,12 @@ class H5pyLogos32(object):
         random.shuffle(train_set)
         random.shuffle(test_set)
 
-        return train_set, test_set
+        train_nolog_set, test_nolog_set = train_test_split(nologos, train_size=self.__train_size,
+                                                           random_state=self.__random_state)
 
-    def __fill_in_h5py_group(self, images, labels, bboxes, set):
+        return train_set, test_set, train_nolog_set, test_nolog_set
+
+    def __fill_in_h5py_group_logos(self, images, labels, bboxes, set):
         """
         Fills h5py group with appropriate data (images, labels, bounding
         boxes).
@@ -106,7 +107,7 @@ class H5pyLogos32(object):
         :param bboxes: H5py dataset with bounding boxes to be filled in.
         :param set: List of (class name, file name) tuples, source of
         information.
-        :return: None
+        :return: None.
         """
         for idx, pair in enumerate(set):
             _, file_name = pair
@@ -122,17 +123,36 @@ class H5pyLogos32(object):
             _, file_name = pair
             with open(os.path.join(self.__bboxes_path, file_name + '.bboxes.txt')) as f:
                 rect = f.read().splitlines()
-            box = [np.int(p) for p in rect[1].split()]
+            # first line: x y width height
+            rect.pop(0)
+            rect_str = ' '.join(rect)
+            box = [np.int(p) for p in rect_str.split()]
             bboxes[idx] = box
 
-    def __create_h5py_base(self, train_set, test_set):
+    def __fill_in_h5py_group_nologos(self, nologos, set):
+        """
+        Fills h5py group with appropriate data (images without logotypes).
+
+        :param nologos: H5py dataset with nologo images to be filled in.
+        :param set: List of (class name, file name) tuples, source of information.
+        :return: None.
+        """
+        for idx, pair in enumerate(set):
+            _, file_name = pair
+            with open(os.path.join(self.__images_path, file_name), 'rb') as f:
+                binary_data = f.read()
+            nologos[idx] = np.fromstring(binary_data, dtype='uint8')
+
+    def __create_h5py_base(self, train_set, test_set, train_nolog_set, test_nolog_set):
         """
         Creates h5py database with groups: 'train', 'test'. Each group consists
-        of sets: 'images', 'labels', 'bboxes'. They refer to images, class names
-        and bounding boxes, respectively.
+        of sets: 'images', 'labels', 'bboxes' and 'nologos'. They refer to images,
+        class names, bounding boxes and images without logos respectively.
 
-        :param train_set: Train set.
-        :param test_set: Test set.
+        :param train_set: Train set (images with logos).
+        :param test_set: Test set (images with logos).
+        :param train_nolog_set: Train set (images without logos).
+        :param test_nolog_set: Test set (images without logos).
         :return: None
         """
         h5py_file = h5py.File('flickrlogos32.h5', 'w')
@@ -154,6 +174,9 @@ class H5pyLogos32(object):
         train_bboxes = train_group.create_dataset(
             'bboxes', shape=(len(train_set), ), dtype=int_dt
         )
+        train_nologos = train_group.create_dataset(
+            'nologos', shape=(len(train_nolog_set), ), dtype=uint8_dt
+        )
 
         test_images = test_group.create_dataset(
             'images', shape=(len(test_set), ), dtype=uint8_dt
@@ -164,9 +187,15 @@ class H5pyLogos32(object):
         test_bboxes = test_group.create_dataset(
             'bboxes', shape=(len(test_set), ), dtype=int_dt
         )
+        test_nologos = test_group.create_dataset(
+            'nologos', shape=(len(test_nolog_set), ), dtype=uint8_dt
+        )
 
-        self.__fill_in_h5py_group(train_images, train_labels, train_bboxes, train_set)
-        self.__fill_in_h5py_group(test_images, test_labels, test_bboxes, test_set)
+        self.__fill_in_h5py_group_logos(train_images, train_labels, train_bboxes, train_set)
+        self.__fill_in_h5py_group_logos(test_images, test_labels, test_bboxes, test_set)
+
+        self.__fill_in_h5py_group_nologos(train_nologos, train_nolog_set)
+        self.__fill_in_h5py_group_nologos(test_nologos, test_nolog_set)
 
         h5py_file.close()
 
@@ -180,7 +209,7 @@ class H5pyLogos32(object):
         :param random_state: The random state used as a seed for 'sklearn' module
         methods.
         :param random_seed: The random seed used as a seed for 'random' module methods.
-        :return: None
+        :return: None.
         """
         self.__root_directory = root_directory
         self.__train_size = train_size
@@ -191,7 +220,7 @@ class H5pyLogos32(object):
         """
         Deinitializes state of the object.
 
-        :return: None
+        :return: None.
         """
         self.__root_directory = None
         self.__train_size = None
@@ -208,11 +237,11 @@ class H5pyLogos32(object):
         :param random_state: The random state used as a seed for 'sklearn' module
         methods.
         :param random_seed: The random seed used as a seed for 'random' module methods.
-        :return: None
+        :return: None.
         """
         self.__initialize(root_directory, train_size, random_state, random_seed)
-        train_set, test_set = self.__prepare_train_test()
-        self.__create_h5py_base(train_set, test_set)
+        train_set, test_set, train_nolog_set, test_nolog_set = self.__prepare_train_test()
+        self.__create_h5py_base(train_set, test_set, train_nolog_set, test_nolog_set)
         self.__deinitialize()
 
 
