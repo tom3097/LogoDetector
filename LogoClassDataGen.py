@@ -185,6 +185,19 @@ class LogoClassDataGen(object):
         return np.array([[1 if labels[i] == j else 0 for j in range(self.__classes_no)]
                          for i in range(labels.shape[0])])
 
+    def __adjust_labels(self, labels):
+        """
+        The label format is expected to be a one channel image containing the label
+        for each pixel. This format is appropriate for fully convolutional network.
+
+        :param labels: Labels with classes information.
+        :return: Labels adjusted for fully convolutional network.
+        """
+        fcn_labels = np.zeros((self.__batch_size, 1, 1, 33), dtype=int)
+        for idx in xrange(self.__batch_size):
+            fcn_labels[idx, 0, 0, labels[idx]] = 1
+        return fcn_labels
+
     def __data_generation(self, group, indexes_batch):
         """
         Generates a batch of data.
@@ -227,7 +240,21 @@ class LogoClassDataGen(object):
                 y[idx] = self.__background_label
                 idx += 1
 
-        return x, self.__sparsify(y)
+        return x, self.__adjust_labels(y)
+
+    def get_random_test(self, seed=None):
+        np.random.seed(seed)
+        rand_idx = np.random.randint(0, len(self.__base['test']['images']))
+        image = Image.open(io.BytesIO(self.__base['test']['images'][rand_idx]))
+        label = self.__base['test']['labels'][rand_idx][0]
+        b = self.__base['test']['bboxes'][rand_idx]
+        all_bboxes = [(b[i], b[i + 1], b[i + 2], b[i + 3]) for i in range(0, len(b), 4)]
+        logo_bbox = random.choice(all_bboxes)
+
+        logo_bbox_gen = self.__get_logo_crop_box(logo_bbox, image.size)
+        logo_crop = image.crop(logo_bbox_gen).resize((self.__width, self.__height), Image.LANCZOS)
+        return np.asarray(logo_crop), label
+
 
     def generate(self, group):
         """
@@ -244,11 +271,20 @@ class LogoClassDataGen(object):
             for i in xrange(max_iter):
                 indexes_batch = indexes[i * self.__logo_per_batch: (i + 1) * self.__logo_per_batch]
                 x, y = self.__data_generation(group, indexes_batch)
+
+                #id = 6
+                #im = Image.fromarray(x[id].astype('uint8'), 'RGB')
+                #im.show()
+                #print y[id]
+                #exit()
+
                 yield x, y
+                #print x.shape
+                #print y
 
 
 if __name__ == '__main__':
-    h5py_file = ''
+    h5py_file = '/home/tomasz/PycharmProjects/LogoDetector/flickrlogos32.h5'
 
-    logoClassDataGen = LogoClassDataGen(h5py_file, 16, 16)
+    logoClassDataGen = LogoClassDataGen(h5py_file, 30, 2)
     logoClassDataGen.generate('train')

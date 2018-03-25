@@ -28,6 +28,9 @@ class H5pyLogos32(object):
         self.__label_encoder = preprocessing.LabelEncoder()
         self.__label_encoder.fit(H5pyLogos32.CLASSES)
 
+        ##print self.__label_encoder.get_params()
+        ##exit()
+
     @property
     def __data_path(self):
         """
@@ -92,6 +95,9 @@ class H5pyLogos32(object):
         random.shuffle(train_set)
         random.shuffle(test_set)
 
+        #print train_set
+        #exit()
+
         train_nolog_set, test_nolog_set = train_test_split(nologos, train_size=self.__train_size,
                                                            random_state=self.__random_state)
 
@@ -116,8 +122,19 @@ class H5pyLogos32(object):
             images[idx] = np.fromstring(binary_data, dtype='uint8')
 
         class_names = [p[0] for p in set]
+        print class_names
+
         encoded_names = self.__label_encoder.transform(class_names)
+        print encoded_names
+        #exit()
         labels[:] = [[class_code] for class_code in encoded_names]
+
+        print self.__label_encoder.inverse_transform(encoded_names)
+
+        #print [H5pyLogos32.CLASSES[ii] for ii in encoded_names]
+        #print [H5pyLogos32.CLASSES[ii] for ii in labels[0]]
+
+        #exit()
 
         for idx, pair in enumerate(set):
             _, file_name = pair
@@ -246,7 +263,7 @@ class H5pyLogos32(object):
 
 
 if __name__ == '__main__':
-    root_directory = ''
+    root_directory = '/home/tomasz/Pictures/Datasets/FlickrLogos-v2'
 
     h5pyLogos32 = H5pyLogos32()
     h5pyLogos32(root_directory)
