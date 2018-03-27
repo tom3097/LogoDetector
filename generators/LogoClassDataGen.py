@@ -232,12 +232,15 @@ class LogoClassDataGen(object):
 
         return x, self.__adjust_labels(y)
 
-    def get_sample_from_testset(self):
+    def get_sample_from_testset(self, random_seed=None):
         """
         Gets random logotype image crop and corresponding label from test data.
 
+        :param random_seed: The random seed.
         :return: Crop of logo image and corresponding label.
         """
+        np.random.seed(random_seed)
+
         rand_idx = np.random.randint(0, len(self.__base['test']['images']))
         image = Image.open(io.BytesIO(self.__base['test']['images'][rand_idx]))
         label = self.__base['test']['labels'][rand_idx][0]

@@ -1,7 +1,7 @@
 from applications import FcnResNet50
 from datasets import H5pyLogos32
 from keras.preprocessing import image
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
 from sklearn import preprocessing
 
@@ -19,15 +19,15 @@ if __name__ == '__main__':
     labels_encoder = preprocessing.LabelEncoder()
     labels_encoder.fit(H5pyLogos32.CLASSES)
 
-    window_no = 5
+    window_no = 10
     size = 197 + window_no * WINDOW_STRIDE
 
-    img = image.load_img(image_path, target_size=(size, size))
+    #img = image.load_img(image_path, target_size=(size, size))
+    img = image.load_img(image_path)
 
     x = image.img_to_array(img)
 
     im = Image.fromarray(x.astype('uint8'), 'RGB')
-    im.show()
 
     x = np.expand_dims(x, axis=0)
 
@@ -37,3 +37,24 @@ if __name__ == '__main__':
     labels = labels_encoder.inverse_transform(encoded_labels)
 
     print labels
+
+    true_label = 'ups'
+
+    draw = ImageDraw.Draw(im)
+
+    print labels.shape
+
+    for i in xrange(labels.shape[1]):
+        for j in xrange(labels.shape[2]):
+            print labels[0, i, j]
+            if labels[0, i, j] == true_label:
+                print "SRODEK"
+                width = 3
+                cor = [i * WINDOW_STRIDE, j * WINDOW_STRIDE, i * WINDOW_STRIDE + 196, j * WINDOW_STRIDE + 196]
+                draw.text((cor[0] + 5, cor[1] + 5), true_label)
+                for w in xrange(width):
+                    draw.rectangle(cor, outline='red')
+                    cor = [cor[0] + 1, cor[1] + 1, cor[2] + 1, cor[3] + 1]
+                #draw.rectangle([0,0,197,197], outline='red')
+
+    im.show()
