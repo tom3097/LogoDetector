@@ -23,8 +23,8 @@ if __name__ == '__main__':
     size = 197 + window_no * WINDOW_STRIDE
 
     img = image.load_img(image_path)
-    x = image.img_to_array(img)
-    x = np.expand_dims(x, axis=0)
+    img = image.img_to_array(img)
+    x = np.expand_dims(img, axis=0)
 
     predictions = model.predict(x)
     encoded_labels = np.argmax(predictions, axis=3)
@@ -32,14 +32,14 @@ if __name__ == '__main__':
 
     # true label for the given image
     true_label = ''
-    im = Image.fromarray(x.astype('uint8'), 'RGB')
+    im = Image.fromarray(img.astype('uint8'), 'RGB')
     draw = ImageDraw.Draw(im)
 
     for i in xrange(labels.shape[1]):
         for j in xrange(labels.shape[2]):
             if labels[0, i, j] == true_label:
                 width = 3
-                cor = [i * WINDOW_STRIDE, j * WINDOW_STRIDE, i * WINDOW_STRIDE + 196, j * WINDOW_STRIDE + 196]
+                cor = [j * WINDOW_STRIDE, i * WINDOW_STRIDE, j * WINDOW_STRIDE + 196, i * WINDOW_STRIDE + 196]
                 draw.text((cor[0] + 5, cor[1] + 5), true_label)
                 for w in xrange(width):
                     draw.rectangle(cor, outline='red')
