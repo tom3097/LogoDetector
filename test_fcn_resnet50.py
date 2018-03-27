@@ -22,39 +22,27 @@ if __name__ == '__main__':
     window_no = 10
     size = 197 + window_no * WINDOW_STRIDE
 
-    #img = image.load_img(image_path, target_size=(size, size))
     img = image.load_img(image_path)
-
     x = image.img_to_array(img)
-
-    im = Image.fromarray(x.astype('uint8'), 'RGB')
-
     x = np.expand_dims(x, axis=0)
 
     predictions = model.predict(x)
     encoded_labels = np.argmax(predictions, axis=3)
-
     labels = labels_encoder.inverse_transform(encoded_labels)
 
-    print labels
-
-    true_label = 'ups'
-
+    # true label for the given image
+    true_label = ''
+    im = Image.fromarray(x.astype('uint8'), 'RGB')
     draw = ImageDraw.Draw(im)
-
-    print labels.shape
 
     for i in xrange(labels.shape[1]):
         for j in xrange(labels.shape[2]):
-            print labels[0, i, j]
             if labels[0, i, j] == true_label:
-                print "SRODEK"
                 width = 3
                 cor = [i * WINDOW_STRIDE, j * WINDOW_STRIDE, i * WINDOW_STRIDE + 196, j * WINDOW_STRIDE + 196]
                 draw.text((cor[0] + 5, cor[1] + 5), true_label)
                 for w in xrange(width):
                     draw.rectangle(cor, outline='red')
                     cor = [cor[0] + 1, cor[1] + 1, cor[2] + 1, cor[3] + 1]
-                #draw.rectangle([0,0,197,197], outline='red')
 
     im.show()

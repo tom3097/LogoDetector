@@ -80,7 +80,7 @@ class LogoClassDataGen(object):
         return np.random.permutation(range(data_no))
 
     @staticmethod
-    def __get_logo_crop_box(bbox, image_size):
+    def get_logo_crop_box(bbox, image_size):
         """
         Generates logo bounding box, with intersection over union greater
         or equal to 0.5.
@@ -208,7 +208,7 @@ class LogoClassDataGen(object):
             all_bboxes = [(b[i], b[i + 1], b[i + 2], b[i + 3]) for i in range(0, len(b), 4)]
             logo_bbox = random.choice(all_bboxes)
 
-            logo_bbox_gen = self.__get_logo_crop_box(logo_bbox, image.size)
+            logo_bbox_gen = self.get_logo_crop_box(logo_bbox, image.size)
             logo_crop = image.crop(logo_bbox_gen).resize((self.__width, self.__height), Image.LANCZOS)
 
             x[idx, :, :, :] = np.asarray(logo_crop)
@@ -231,26 +231,6 @@ class LogoClassDataGen(object):
                 idx += 1
 
         return x, self.__adjust_labels(y)
-
-    def get_sample_from_testset(self, random_seed=None):
-        """
-        Gets random logotype image crop and corresponding label from test data.
-
-        :param random_seed: The random seed.
-        :return: Crop of logo image and corresponding label.
-        """
-        np.random.seed(random_seed)
-
-        rand_idx = np.random.randint(0, len(self.__base['test']['images']))
-        image = Image.open(io.BytesIO(self.__base['test']['images'][rand_idx]))
-        label = self.__base['test']['labels'][rand_idx][0]
-        b = self.__base['test']['bboxes'][rand_idx]
-        all_bboxes = [(b[i], b[i + 1], b[i + 2], b[i + 3]) for i in range(0, len(b), 4)]
-        logo_bbox = random.choice(all_bboxes)
-
-        logo_bbox_gen = self.__get_logo_crop_box(logo_bbox, image.size)
-        logo_crop = image.crop(logo_bbox_gen).resize((self.__width, self.__height), Image.LANCZOS)
-        return np.asarray(logo_crop), label
 
     def generate(self, group):
         """
