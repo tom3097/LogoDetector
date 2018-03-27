@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
@@ -17,19 +19,15 @@ class H5pyLogos32(object):
         'corona', 'dhl', 'erdinger', 'esso', 'fedex', 'ferrari', 'ford', 'fosters',
         'google', 'guiness', 'heineken', 'HP', 'milka', 'nvidia', 'paulaner', 'pepsi',
         'rittersport', 'shell', 'singha', 'starbucks', 'stellaartois', 'texaco',
-        'tsingtao', 'ups'
+        'tsingtao', 'ups', 'bg'
     ]
 
     def __init__(self):
         self.__root_directory = None
         self.__train_size = None
-        self.__random_state = None
         self.__random_seed = None
         self.__label_encoder = preprocessing.LabelEncoder()
         self.__label_encoder.fit(H5pyLogos32.CLASSES)
-
-        ##print self.__label_encoder.get_params()
-        ##exit()
 
     @property
     def __data_path(self):
@@ -88,18 +86,14 @@ class H5pyLogos32(object):
         test_set = []
         for bucket in class_bucket.values():
             train_part, test_part = train_test_split(bucket, train_size=self.__train_size,
-                                                     random_state=self.__random_state)
+                                                     random_state=self.__random_seed)
             train_set.extend(train_part)
             test_set.extend(test_part)
-        random.seed(self.__random_seed)
         random.shuffle(train_set)
         random.shuffle(test_set)
 
-        #print train_set
-        #exit()
-
         train_nolog_set, test_nolog_set = train_test_split(nologos, train_size=self.__train_size,
-                                                           random_state=self.__random_state)
+                                                           random_state=self.__random_seed)
 
         return train_set, test_set, train_nolog_set, test_nolog_set
 
@@ -122,19 +116,9 @@ class H5pyLogos32(object):
             images[idx] = np.fromstring(binary_data, dtype='uint8')
 
         class_names = [p[0] for p in set]
-        print class_names
 
         encoded_names = self.__label_encoder.transform(class_names)
-        print encoded_names
-        #exit()
         labels[:] = [[class_code] for class_code in encoded_names]
-
-        print self.__label_encoder.inverse_transform(encoded_names)
-
-        #print [H5pyLogos32.CLASSES[ii] for ii in encoded_names]
-        #print [H5pyLogos32.CLASSES[ii] for ii in labels[0]]
-
-        #exit()
 
         for idx, pair in enumerate(set):
             _, file_name = pair
@@ -163,7 +147,7 @@ class H5pyLogos32(object):
     def __create_h5py_base(self, train_set, test_set, train_nolog_set, test_nolog_set):
         """
         Creates h5py database with groups: 'train', 'test'. Each group consists
-        of sets: 'images', 'labels', 'bboxes' and 'nologos'. They refer to images,
+        of sets: 'images', 'labels', 'bboxes' and 'nologos'. They refer to logo images,
         class names, bounding boxes and images without logos respectively.
 
         :param train_set: Train set (images with logos).
@@ -216,22 +200,20 @@ class H5pyLogos32(object):
 
         h5py_file.close()
 
-    def __initialize(self, root_directory, train_size, random_state, random_seed):
+    def __initialize(self, root_directory, train_size, random_seed):
         """
         Initializes state of the object.
 
         :param root_directory: The path to the 'FlickrLogos-v2' directory (downloaded
         from http://www.multimedia-computing.de/flickrlogos/).
         :param train_size: The ratio of data used for training.
-        :param random_state: The random state used as a seed for 'sklearn' module
-        methods.
-        :param random_seed: The random seed used as a seed for 'random' module methods.
+        :param random_seed: The random seed.
         :return: None.
         """
         self.__root_directory = root_directory
         self.__train_size = train_size
-        self.__random_state = random_state
         self.__random_seed = random_seed
+        random.seed(self.__random_seed)
 
     def __deinitialize(self):
         """
@@ -241,29 +223,19 @@ class H5pyLogos32(object):
         """
         self.__root_directory = None
         self.__train_size = None
-        self.__random_state = None
         self.__random_seed = None
 
-    def __call__(self, root_directory, train_size=0.8, random_state=4, random_seed=126):
+    def __call__(self, root_directory, train_size=0.8, random_seed=126):
         """
         Launches the creation of h5py database.
 
         :param root_directory: The path to the 'FlickrLogos-v2' directory (downloaded
         from http://www.multimedia-computing.de/flickrlogos/).
         :param train_size: The ratio of data used for training.
-        :param random_state: The random state used as a seed for 'sklearn' module
-        methods.
-        :param random_seed: The random seed used as a seed for 'random' module methods.
+        :param random_seed: The random seed.
         :return: None.
         """
-        self.__initialize(root_directory, train_size, random_state, random_seed)
+        self.__initialize(root_directory, train_size, random_seed)
         train_set, test_set, train_nolog_set, test_nolog_set = self.__prepare_train_test()
         self.__create_h5py_base(train_set, test_set, train_nolog_set, test_nolog_set)
         self.__deinitialize()
-
-
-if __name__ == '__main__':
-    root_directory = '/home/tomasz/Pictures/Datasets/FlickrLogos-v2'
-
-    h5pyLogos32 = H5pyLogos32()
-    h5pyLogos32(root_directory)

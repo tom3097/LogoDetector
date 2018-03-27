@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
+
 import numpy as np
 import h5py
 from PIL import Image
+from sklearn import preprocessing
 import io
 import random
 
@@ -24,8 +27,10 @@ class LogoClassDataGen(object):
         self.__width = width
         self.__height = height
         self.__channels = 3
-        self.__classes_no = len(self.__base.attrs['classes'].split(', ')) + 1
-        self.__background_label = self.__classes_no - 1
+        self.__classes_no = len(self.__base.attrs['classes'].split(', '))
+        self.__label_encoder = preprocessing.LabelEncoder()
+        self.__label_encoder.fit(self.__base.attrs['classes'].split(', '))
+        self.__background_label = self.__label_encoder.transform(['bg'])[0]
         np.random.seed(random_seed)
         random.seed(random_seed)
 
@@ -110,22 +115,21 @@ class LogoClassDataGen(object):
         return bbox_gen
 
     @staticmethod
-    def __get_back_crop_box(bboxes, image_size):
+    def __get_back_crop_box(bboxes, image_size, window_size):
         """
         Generates background bounding box, with intersection equals to 0.0.
 
         :param bbox: List of ground truth bounding boxes.
         :param image_size: Size of the image.
+        :param window_size: Size of the sliding window.
         :return: Generated bounding box, or 'None' if such a box cannot
         be generated.
         """
-        max_iterations = 150
+        if image_size[0] <= window_size[0] + 32 or image_size[1] <= window_size[1] + 32:
+            return None
+
+        max_iterations = 50
         iteration = 0
-
-        correction = 0
-
-        bbox_widths = [bboxes[i][2] for i in range(len(bboxes))]
-        bbox_heights = [bboxes[i][3] for i in range(len(bboxes))]
 
         bbox_found = False
         while not bbox_found:
@@ -134,13 +138,12 @@ class LogoClassDataGen(object):
 
             bbox_found = True
 
-            back_width = np.random.randint(min(bbox_widths) - 32 - correction, max(bbox_widths) - correction)
-            back_height = np.random.randint(min(bbox_heights) - 32 - correction, max(bbox_heights) - correction)
-            back_width = max(back_width, 32)
-            back_height = max(back_height, 32)
+            back_width = np.random.randint(window_size[0] - 32, window_size[0] + 32)
+            back_height = np.random.randint(window_size[1] - 32, window_size[1] + 32)
 
             x_rand = np.random.randint(0, image_size[0] - 1 - back_width)
             y_rand = np.random.randint(0, image_size[1] - 1 - back_height)
+
             bbox_gen = np.array([x_rand, y_rand, x_rand + back_width, y_rand + back_height])
             for bbox in bboxes:
                 bbox_true = np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]])
@@ -148,7 +151,6 @@ class LogoClassDataGen(object):
                 if intersection != 0.0:
                     bbox_found = False
                     break
-            correction += 2
             iteration += 1
 
         return bbox_gen
@@ -163,8 +165,8 @@ class LogoClassDataGen(object):
         rand_idx = np.random.randint(0, len(self.__base[group]['nologos']))
         image = Image.open(io.BytesIO(self.__base[group]['nologos'][rand_idx]))
 
-        back_width = np.random.randint(image.size[0] / 6, image.size[0] / 3)
-        back_height = np.random.randint(image.size[1] / 6, image.size[0] / 3)
+        back_width = np.random.randint(image.size[0] / 6, image.size[0] / 4)
+        back_height = np.random.randint(image.size[1] / 6, image.size[1] / 4)
         x_rand = np.random.randint(0, image.size[0] - 1 - back_width)
         y_rand = np.random.randint(0, image.size[1] - 1 - back_height)
 
@@ -173,27 +175,14 @@ class LogoClassDataGen(object):
                                                 Image.LANCZOS)
         return back_crop
 
-    def __sparsify(self, labels):
-        """
-        Transforms labels to a binary form (for instance, in a 6-label problem,
-        the third label is written [0 0 1 0 0 0]). This form is the only one
-        acceptable by the keras.
-
-        :param labels: Labels with classes information.
-        :return: Labels transformed to a binary form.
-        """
-        return np.array([[1 if labels[i] == j else 0 for j in range(self.__classes_no)]
-                         for i in range(labels.shape[0])])
-
     def __adjust_labels(self, labels):
         """
-        The label format is expected to be a one channel image containing the label
-        for each pixel. This format is appropriate for fully convolutional network.
+        Transforms labels into format appropriate for fully convolutional network.
 
         :param labels: Labels with classes information.
         :return: Labels adjusted for fully convolutional network.
         """
-        fcn_labels = np.zeros((self.__batch_size, 1, 1, 33), dtype=int)
+        fcn_labels = np.zeros((self.__batch_size, 1, 1, self.__classes_no), dtype=int)
         for idx in xrange(self.__batch_size):
             fcn_labels[idx, 0, 0, labels[idx]] = 1
         return fcn_labels
@@ -228,7 +217,8 @@ class LogoClassDataGen(object):
 
             back_no = np.count_nonzero(background_indexes == db_idx)
             for b_idx in xrange(back_no):
-                back_bbox_gen = self.__get_back_crop_box(all_bboxes, image.size)
+                back_bbox_gen = self.__get_back_crop_box(all_bboxes, image.size,
+                                                         (self.__width, self.__height))
 
                 if back_bbox_gen is None:
                     back_crop = self.__get_background_from_nologo(group)
@@ -242,8 +232,12 @@ class LogoClassDataGen(object):
 
         return x, self.__adjust_labels(y)
 
-    def get_random_test(self, seed=None):
-        np.random.seed(seed)
+    def get_sample_from_testset(self):
+        """
+        Gets random logotype image crop and corresponding label from test data.
+
+        :return: Crop of logo image and corresponding label.
+        """
         rand_idx = np.random.randint(0, len(self.__base['test']['images']))
         image = Image.open(io.BytesIO(self.__base['test']['images'][rand_idx]))
         label = self.__base['test']['labels'][rand_idx][0]
@@ -254,7 +248,6 @@ class LogoClassDataGen(object):
         logo_bbox_gen = self.__get_logo_crop_box(logo_bbox, image.size)
         logo_crop = image.crop(logo_bbox_gen).resize((self.__width, self.__height), Image.LANCZOS)
         return np.asarray(logo_crop), label
-
 
     def generate(self, group):
         """
@@ -271,20 +264,4 @@ class LogoClassDataGen(object):
             for i in xrange(max_iter):
                 indexes_batch = indexes[i * self.__logo_per_batch: (i + 1) * self.__logo_per_batch]
                 x, y = self.__data_generation(group, indexes_batch)
-
-                #id = 6
-                #im = Image.fromarray(x[id].astype('uint8'), 'RGB')
-                #im.show()
-                #print y[id]
-                #exit()
-
                 yield x, y
-                #print x.shape
-                #print y
-
-
-if __name__ == '__main__':
-    h5py_file = '/home/tomasz/PycharmProjects/LogoDetector/flickrlogos32.h5'
-
-    logoClassDataGen = LogoClassDataGen(h5py_file, 30, 2)
-    logoClassDataGen.generate('train')

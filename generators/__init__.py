@@ -1,0 +1,1 @@
+from LogoClassDataGen import LogoClassDataGen

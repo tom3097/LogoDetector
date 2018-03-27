@@ -1,0 +1,1 @@
+from FcnResnet50 import FcnResNet50
